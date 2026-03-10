@@ -5,6 +5,55 @@ const { getDB } = require('../models/db');
 const PDFDocument = require('pdfkit');
 const ExcelJS = require('exceljs');
 
+// Helper function to format Excel workbook with professional styling
+async function formatExcelWorkbook(workbook, title = 'Sales Report') {
+  const sheet = workbook.worksheets[0];
+  
+  // Define columns with headers and widths
+  sheet.columns = [
+    { header: 'Date', key: 'date', width: 12 },
+    { header: 'Invoice No', key: 'invoiceNo', width: 12 },
+    { header: 'Party Name', key: 'partyName', width: 18 },
+    { header: 'Transaction Type', key: 'transactionType', width: 18 },
+    { header: 'Total Amount', key: 'totalAmount', width: 14 },
+    { header: 'Payment Type', key: 'paymentType', width: 14 },
+    { header: 'Received/Paid Amount', key: 'receivedPaidAmount', width: 20 },
+    { header: 'Balance Due', key: 'balanceDue', width: 14 },
+    { header: 'Description', key: 'description', width: 20 }
+  ];
+
+  // Format header row
+  const headerRow = sheet.getRow(1);
+  headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+  headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4472C4' } };
+  headerRow.alignment = { horizontal: 'center', vertical: 'center', wrapText: true };
+  headerRow.height = 25;
+
+  // Format data rows
+  sheet.eachRow((row, rowNumber) => {
+    if (rowNumber > 1) {
+      row.alignment = { horizontal: 'left', vertical: 'center' };
+      // Right-align numeric columns
+      row.getCell('totalAmount').alignment = { horizontal: 'right', vertical: 'center' };
+      row.getCell('receivedPaidAmount').alignment = { horizontal: 'right', vertical: 'center' };
+      row.getCell('balanceDue').alignment = { horizontal: 'right', vertical: 'center' };
+      
+      // Add borders
+      row.eachCell((cell) => {
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FFD3D3D3' } },
+          left: { style: 'thin', color: { argb: 'FFD3D3D3' } },
+          bottom: { style: 'thin', color: { argb: 'FFD3D3D3' } },
+          right: { style: 'thin', color: { argb: 'FFD3D3D3' } }
+        };
+      });
+    }
+  });
+
+  // Freeze panes
+  sheet.freezePane = 'A2';
+}
+
 // Get dashboard overview
 router.get('/overview', async (req, res) => {
   try {
@@ -323,7 +372,7 @@ router.get('/inventory-analytics', async (req, res) => {
   }
 });
 
-// Sales report export
+// Sales report export - ENHANCED with professional formatting
 router.get('/sales-report/export', async (req, res) => {
   const { start_date, end_date, format = 'pdf' } = req.query;
   try {
@@ -339,47 +388,232 @@ router.get('/sales-report/export', async (req, res) => {
     const totalSales = orders.reduce((sum, o) => sum + (o.final_amount || 0), 0);
     const totalOrders = orders.length;
     const averageOrderValue = totalOrders ? totalSales / totalOrders : 0;
-    
     if (format === 'excel') {
       const workbook = new ExcelJS.Workbook();
       const sheet = workbook.addWorksheet('Sales Report');
       
-      // Header
-      sheet.addRow(['RTQ Foods - Sales Report']);
-      sheet.addRow([`Period: ${start_date || 'All'} to ${end_date || 'Now'}`]);
-      sheet.addRow([]);
-      
-      // Summary
-      sheet.addRow(['Summary']);
-      sheet.addRow(['Total Sales', totalSales]);
-      sheet.addRow(['Total Orders', totalOrders]);
-      sheet.addRow(['Average Order Value', averageOrderValue]);
-      sheet.addRow([]);
-      
-      // Orders details
-      sheet.addRow(['Order Details']);
-      sheet.addRow(['Order Number', 'Customer', 'Type', 'Amount', 'Status', 'Payment', 'Date']);
-      orders.forEach(o => {
-        const orderNumber = o._id ? o._id.toString().slice(-8) : 'N/A';
-        const customerName = o.delivery_details?.fullName || o.customer_name || 'N/A';
-        const orderType = o.order_type || 'Online';
-        const amount = o.final_amount || o.amount || 0;
-        const status = o.status || 'Unknown';
-        const paymentType = o.payment_type || 'Online';
-        const date = o.createdAt ? new Date(o.createdAt).toLocaleDateString() : 'N/A';
-        sheet.addRow([
-          orderNumber,
-          customerName,
-          orderType,
-          amount,
-          status,
-          paymentType,
-          date
-        ]);
+      // Define columns with professional formatting
+      sheet.columns = [
+        { header: 'Date', key: 'date', width: 12 },
+        { header: 'Invoice No', key: 'invoiceNo', width: 12 },
+        { header: 'Party Name', key: 'partyName', width: 18 },
+        { header: 'Transaction Type', key: 'transactionType', width: 18 },
+        { header: 'Total Amount', key: 'totalAmount', width: 14 },
+        { header: 'Payment Type', key: 'paymentType', width: 14 },
+        { header: 'Received/Paid Amount', key: 'receivedPaidAmount', width: 20 },
+        { header: 'Balance Due', key: 'balanceDue', width: 14 },
+        { header: 'Description', key: 'description', width: 20 }
+      ];
+
+      // Format header row - Professional blue styling
+      const headerRow = sheet.getRow(1);
+      headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4472C4' } };
+      headerRow.alignment = { horizontal: 'center', vertical: 'center', wrapText: true };
+      headerRow.height = 25;
+
+      // Add data rows from orders
+
+      let rowTotal = 0;
+      orders.forEach((order, index) => {
+        const orderDate = order.createdAt ? new Date(order.createdAt).toLocaleDateString('en-IN') : '';
+        const invoiceNo = order.order_number || (index + 1);
+        const partyName = order.delivery_details?.fullName || order.customer_name || 'Unknown';
+        const transactionType = order.order_type || 'Sale';
+        const amount = order.final_amount || order.amount || 0;
+        const paymentType = order.payment_type || 'Cash';
+        const description = ``;
+
+        const row = sheet.addRow({
+          date: orderDate,
+          invoiceNo: invoiceNo,
+          partyName: partyName,
+          transactionType: transactionType,
+          totalAmount: amount,
+          paymentType: paymentType,
+          receivedPaidAmount: amount,
+          balanceDue: amount,
+          description: description
+        });
+
+        row.alignment = { horizontal: 'left', vertical: 'center' };
+        
+        // Format numeric columns
+        row.getCell('totalAmount').alignment = { horizontal: 'right', vertical: 'center' };
+        row.getCell('receivedPaidAmount').alignment = { horizontal: 'right', vertical: 'center' };
+        row.getCell('balanceDue').alignment = { horizontal: 'right', vertical: 'center' };
+        
+        // Add borders
+        row.eachCell((cell) => {
+          cell.border = {
+            top: { style: 'thin', color: { argb: 'FFD3D3D3' } },
+            left: { style: 'thin', color: { argb: 'FFD3D3D3' } },
+            bottom: { style: 'thin', color: { argb: 'FFD3D3D3' } },
+            right: { style: 'thin', color: { argb: 'FFD3D3D3' } }
+          };
+        });
+
+        rowTotal += amount;
       });
+
+      // Add Total row
+      const totalRow = sheet.addRow({});
+      totalRow.getCell('transactionType').value = 'Total';
+      totalRow.getCell('transactionType').font = { bold: true };
+      totalRow.getCell('totalAmount').value = rowTotal;
+      totalRow.getCell('totalAmount').font = { bold: true };
+      totalRow.getCell('totalAmount').numFmt = '#,##0.00';
+      totalRow.getCell('totalAmount').alignment = { horizontal: 'right', vertical: 'center' };
+      totalRow.height = 20;
       
+      // Format Total row
+      totalRow.eachCell((cell) => {
+        cell.font = { bold: true };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2F2F2' } };
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FF000000' } },
+          left: { style: 'thin', color: { argb: 'FF000000' } },
+          bottom: { style: 'thin', color: { argb: 'FF000000' } },
+          right: { style: 'thin', color: { argb: 'FF000000' } }
+        };
+      });
+
+      // Freeze header row
+      sheet.freezePane = 'A2';
+
+      // --- Item Details worksheet ---
+      const itemSheet = workbook.addWorksheet('Item Details');
+      // Top info row
+      itemSheet.addRow([`Generated on: ${new Date().toLocaleString('en-IN')}`]);
+      itemSheet.addRow([]);
+
+      // Define columns for item details (matches posted screenshot)
+      itemSheet.columns = [
+        { header: 'Date', key: 'date', width: 12 },
+        { header: 'Invoice No./Txn No', key: 'invoice', width: 16 },
+        { header: 'Party Name', key: 'partyName', width: 20 },
+        { header: 'Item Name', key: 'itemName', width: 28 },
+        { header: 'Item Code', key: 'itemCode', width: 18 },
+        { header: 'HSN/SAC', key: 'hsn', width: 12 },
+        { header: 'Category', key: 'category', width: 16 },
+        { header: 'Challan/Order No.', key: 'orderNo', width: 18 },
+        { header: 'Quantity', key: 'quantity', width: 10 },
+        { header: 'Unit', key: 'unit', width: 10 },
+        { header: 'UnitPrice', key: 'unitPrice', width: 12 },
+        { header: 'Discount Percent', key: 'discountPercent', width: 15 },
+        { header: 'Discount', key: 'discount', width: 12 },
+        { header: 'Tax Percent', key: 'taxPercent', width: 12 },
+        { header: 'Tax', key: 'tax', width: 12 },
+        { header: 'Transaction Type', key: 'transactionType', width: 16 },
+        { header: 'Amount', key: 'amount', width: 14 }
+      ];
+
+      // Style header row for item sheet
+      const itemHeaderRow = itemSheet.getRow(1); // headers are on row 3 because of two top rows
+      itemHeaderRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      itemHeaderRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4472C4' } };
+      itemHeaderRow.alignment = { horizontal: 'center', vertical: 'center', wrapText: true };
+      itemHeaderRow.height = 22;
+
+      // Populate item rows by unwinding order items
+      orders.forEach(order => {
+        const orderDate = order.createdAt ? new Date(order.createdAt).toLocaleDateString('en-IN') : '';
+        const invoiceNo = order.order_number || (order._id ? order._id.toString().slice(-8) : '');
+        const partyName = order.delivery_details?.fullName || order.customer_name || '';
+        const orderNo = order.challan_no || order.order_number || '';
+        const transactionType = order.order_type || 'Sale';
+
+        if (Array.isArray(order.items) && order.items.length > 0) {
+          order.items.forEach(item => {
+            const itemName = item.product_name || item.name || '';
+            const itemCode = item.sku || item.item_code || item.code || '';
+            const hsn = item.hsn || item.hsn_sac || '';
+            const category = item.category_name || item.category || '';
+            const qty = item.quantity || item.qty || 0;
+            const unit = item.unit || 'Nos';
+            const unitPrice = item.unit_price || item.price || item.rate || 0;
+            const discountPercent = item.discount_percent || item.discountPercent || 0;
+            const discount = item.discount_amount || item.discount || 0;
+            const taxPercent = item.tax_percent || item.taxPercent || 0;
+            const tax = item.tax_amount || item.tax || 0;
+            const amount = item.total_price || item.total || (qty * unitPrice - (discount || 0) + (tax || 0));
+
+            const newRow = itemSheet.addRow({
+              date: orderDate,
+              invoice: invoiceNo,
+              partyName: partyName,
+              itemName: itemName,
+              itemCode: itemCode,
+              hsn: hsn,
+              category: category,
+              orderNo: orderNo,
+              quantity: qty,
+              unit: unit,
+              unitPrice: unitPrice,
+              discountPercent: discountPercent,
+              discount: discount,
+              taxPercent: taxPercent,
+              tax: tax,
+              transactionType: transactionType,
+              amount: amount
+            });
+
+            // Format numeric columns and add borders
+            ['unitPrice', 'discount', 'tax', 'amount', 'quantity', 'discountPercent', 'taxPercent'].forEach(key => {
+              try {
+                newRow.getCell(key).alignment = { horizontal: 'right', vertical: 'center' };
+                if (key === 'unitPrice' || key === 'discount' || key === 'tax' || key === 'amount') {
+                  newRow.getCell(key).numFmt = '#,##0.00';
+                }
+              } catch (e) {}
+            });
+
+            newRow.eachCell((cell) => {
+              cell.border = {
+                top: { style: 'thin', color: { argb: 'FFD3D3D3' } },
+                left: { style: 'thin', color: { argb: 'FFD3D3D3' } },
+                bottom: { style: 'thin', color: { argb: 'FFD3D3D3' } },
+                right: { style: 'thin', color: { argb: 'FFD3D3D3' } }
+              };
+            });
+          });
+        } else {
+          // Fallback row for orders without item details
+          const newRow = itemSheet.addRow({
+            date: orderDate,
+            invoice: invoiceNo,
+            partyName: partyName,
+            itemName: '',
+            itemCode: '',
+            hsn: '',
+            category: '',
+            orderNo: orderNo,
+            quantity: 0,
+            unit: '',
+            unitPrice: 0,
+            discountPercent: 0,
+            discount: 0,
+            taxPercent: 0,
+            tax: 0,
+            transactionType: transactionType,
+            amount: order.final_amount || order.amount || 0
+          });
+          newRow.eachCell((cell) => {
+            cell.border = {
+              top: { style: 'thin', color: { argb: 'FFD3D3D3' } },
+              left: { style: 'thin', color: { argb: 'FFD3D3D3' } },
+              bottom: { style: 'thin', color: { argb: 'FFD3D3D3' } },
+              right: { style: 'thin', color: { argb: 'FFD3D3D3' } }
+            };
+          });
+        }
+      });
+
+      // Freeze header row for item sheet
+      itemSheet.freezePane = 'A2';
+
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      res.setHeader('Content-Disposition', 'attachment; filename=rtq-sales-report.xlsx');
+      res.setHeader('Content-Disposition', `attachment; filename=sales-report-${new Date().toISOString().split('T')[0]}.xlsx`);
       await workbook.xlsx.write(res);
       res.end();
     } else {
@@ -420,9 +654,6 @@ router.get('/sales-report/export', async (req, res) => {
         
         doc.text('Recent Orders:');
         doc.text('----------------------------------------');
-        
-        // Simple test first
-        doc.text('Test Order | Test Customer | ₹100 | Pending | 2025-07-28');
         
         if (orders.length > 0) {
           orders.slice(0, 20).forEach(o => {

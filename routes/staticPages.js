@@ -1,6 +1,9 @@
 const express = require('express');
 const router = express.Router();
-const nodemailer = require('nodemailer');
+// contact emails are not sent; enquiries are stored in DB
+const { getDB } = require('../models/db');
+const authMiddleware = require('../middleware/authMiddleware');
+const { ObjectId } = require('mongodb');
 
 // Static content (can be replaced with DB/file content later)
 const pages = {
@@ -22,16 +25,7 @@ const pages = {
   }
 };
 
-router.get('/:page', (req, res) => {
-  const { page } = req.params;
-  if (pages[page]) {
-    res.json({ success: true, page: pages[page] });
-  } else {
-    res.status(404).json({ success: false, message: 'Page not found' });
-  }
-});
-
-// POST /contact - receive contact form and send email
+// POST /contact - receive contact form and store enquiry in DB (no email)
 router.post('/contact', async (req, res) => {
   const { name, email, phone, subject, message } = req.body;
   if (!name || !email || !subject || !message) {
@@ -39,37 +33,75 @@ router.post('/contact', async (req, res) => {
   }
 
   try {
-    // Create transport using env config. Ensure these are set in your .env
-    const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST || 'smtp.example.com',
-      port: process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 587,
-      secure: process.env.SMTP_SECURE === 'true',
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS
-      }
-    });
-
-    const toEmail = process.env.CONTACT_TO_EMAIL || process.env.SMTP_USER;
-
-    const mailOptions = {
-      from: `${name} <${email}>`,
-      to: toEmail,
-      subject: `[Contact Form] ${subject}`,
-      text: `Name: ${name}\nEmail: ${email}\nPhone: ${phone || '-'}\n\nMessage:\n${message}`,
-      html: `<p><strong>Name:</strong> ${name}</p>
-             <p><strong>Email:</strong> ${email}</p>
-             <p><strong>Phone:</strong> ${phone || '-'}</p>
-             <hr />
-             <p>${message.replace(/\n/g, '<br/>')}</p>`
+    const db = getDB();
+    const contactDoc = {
+      name,
+      email,
+      phone: phone || null,
+      subject,
+      message,
+      status: 'open', // open | inprogress | onhold | closed
+      admin_description: '',
+      createdAt: new Date(),
+      updatedAt: new Date()
     };
 
-    const info = await transporter.sendMail(mailOptions);
-
-    return res.json({ success: true, message: 'Enquiry sent', info });
+    const result = await db.collection('contacts').insertOne(contactDoc);
+    // return inserted id as string for frontend
+    return res.json({ success: true, message: 'Enquiry saved', id: result.insertedId.toString() });
   } catch (err) {
-    console.error('Error sending contact email', err);
-    return res.status(500).json({ success: false, message: 'Failed to send enquiry', error: err.message });
+    console.error('Error saving contact enquiry', err);
+    return res.status(500).json({ success: false, message: 'Failed to save enquiry' });
+  }
+});
+
+// Admin: list enquiries
+router.get('/contacts', authMiddleware(['admin', 'staff']), async (req, res) => {
+  try {
+    const db = getDB();
+    let contacts = await db.collection('contacts').find().sort({ createdAt: -1 }).toArray();
+    contacts = contacts.map(c => ({ ...c, _id: c._id.toString() }));
+    return res.json({ success: true, contacts });
+  } catch (err) {
+    console.error('Error fetching contacts', err);
+    return res.status(500).json({ success: false, message: 'Failed to fetch enquiries' });
+  }
+});
+
+// Admin: update status and add admin description
+router.patch('/contacts/:id', authMiddleware(['admin', 'staff']), async (req, res) => {
+  const { id } = req.params;
+  const { status, admin_description } = req.body;
+  const allowed = ['open', 'inprogress', 'onhold', 'closed'];
+  if (status && !allowed.includes(status)) {
+    return res.status(400).json({ success: false, message: 'Invalid status' });
+  }
+  try {
+    const db = getDB();
+    const update = { $set: { updatedAt: new Date() } };
+    if (status) update.$set.status = status;
+    if (admin_description !== undefined) update.$set.admin_description = admin_description;
+
+    const result = await db.collection('contacts').updateOne({ _id: new ObjectId(id) }, update);
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ success: false, message: 'Enquiry not found' });
+    }
+    let updated = await db.collection('contacts').findOne({ _id: new ObjectId(id) });
+    if (updated) updated._id = updated._id.toString();
+    return res.json({ success: true, contact: updated });
+  } catch (err) {
+    console.error('Error updating contact', err);
+    return res.status(500).json({ success: false, message: 'Failed to update enquiry' });
+  }
+});
+
+// Catch-all route for static pages (must come AFTER specific routes)
+router.get('/:page', (req, res) => {
+  const { page } = req.params;
+  if (pages[page]) {
+    res.json({ success: true, page: pages[page] });
+  } else {
+    res.status(404).json({ success: false, message: 'Page not found' });
   }
 });
 
